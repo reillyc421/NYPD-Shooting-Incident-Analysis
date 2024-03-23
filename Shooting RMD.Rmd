@@ -1,0 +1,195 @@
+---
+title: "NYPD Shooting Incident"
+author: "ME"
+date: "2024-03-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r libraries}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(lubridate)
+```
+
+## Getting Started
+
+Import the NYPD historical shooting dataset from the following url: "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+The initial summary of the data is below.
+
+```{r importdata}
+shooting <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+summary(shooting)
+```
+
+## Tidying
+
+I removed 8 columns with the following code:
+
+```{r columnremoval}
+shooting <- shooting |> 
+  select(-c(X_COORD_CD, 
+            Y_COORD_CD, 
+            Latitude, 
+            Longitude, 
+            Lon_Lat,
+            LOC_CLASSFCTN_DESC, 
+            LOC_OF_OCCUR_DESC, 
+            LOCATION_DESC))
+```
+
+I converted the data type of OCCUR_DATE to date with the following code:
+
+```{r dateconversion}
+shooting <- shooting |> 
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+```
+
+I want to convert the data type of several columns from character to factor. To convert the data type to factor, I used the following code:
+
+``` {r factorconversion}
+shooting <- mutate_at(shooting, 
+                      vars(PERP_AGE_GROUP, 
+                           PERP_SEX, 
+                           PERP_RACE, 
+                           VIC_AGE_GROUP, 
+                           VIC_SEX, 
+                           VIC_RACE, 
+                           BORO, 
+                           JURISDICTION_CODE), as.factor)
+```
+
+## Summary
+
+The summary of the tidied data is below:
+```{r summary, echo=FALSE}
+summary(shooting)
+```
+
+## Visualization
+
+I decided to plot the number of shootings by the month in which they occurred. First, I split the OCCUR_DATE variable into 3 columns: YEAR, MONTH, and DAY. I also planned to compare male and female perpetrators, so I filtered out observations that were missing data for PERP_SEX. I grouped the data by MONTH and created a COUNT variable to count how many shootings occurred in each month. I calculated the mean shootings per month, first overall and then grouped by gender.
+
+```{r shootingsbymonth}
+shooting_by_month <- shooting |>
+  dplyr::mutate(YEAR = lubridate::year(OCCUR_DATE),
+                MONTH = lubridate::month(OCCUR_DATE, label = TRUE),
+                DAY = lubridate::day(OCCUR_DATE))
+
+shooting_by_month_overall <- shooting_by_month |> 
+  filter(PERP_SEX %in% c('M','F')) |>
+  group_by(MONTH) |>
+  summarize(COUNT = n())
+
+shooting_by_month_overall$mean <- shooting_by_month_overall$COUNT/16
+
+shooting_by_month_overall  |>
+  ggplot(
+    aes(x=MONTH, y = mean, group = 1)) +
+  geom_line() +
+  labs(
+    title = "Mean Shootings per Month from 2006-2022",
+    subtitle = "NYPD Shooting Incident Data Report",
+    x = "Month",
+    y = "Mean Shootings"
+  )
+```
+
+Next, I grouped the data by the perpetrator's gender and plotted the mean shootings by month for men and women.
+
+```{r genderplot}
+shooting_by_month_by_gender <- shooting_by_month |>
+  group_by(PERP_SEX, MONTH) |>
+  filter(PERP_SEX %in% c('M','F')) |>
+  summarize(COUNT = n())
+
+shooting_by_month_by_gender$mean <- shooting_by_month_by_gender$COUNT/16
+
+shooting_by_month_by_gender |> ggplot(
+  aes(x=MONTH, y = mean, group = PERP_SEX)) +
+  geom_line(aes(color = PERP_SEX)) +
+  labs(
+    title = "Mean Shootings per Month by Male and Female Perpetrators",
+    subtitle = "NYPD Shooting Incident Data 2006-2022",
+    x = "Month",
+    y = "Mean Shootings",
+    color = "Perpetrator Gender"
+  )
+```
+
+Because there are fewer data points for women perpetrators, it was difficult to see a pattern in the graph. I plotted the women perpetrators separately in order to see more detail.
+
+```{r femaleplot}
+shooting_by_month_by_gender |>
+  filter(PERP_SEX == 'F')|>
+  ggplot(
+    aes(x=MONTH, y = mean, group = 1)) +
+  geom_line() +
+  labs(
+    title = "Mean Shootings per Month by Female Perpetrators from 2006-2022",
+    subtitle = "NYPD Shooting Incident Data Report",
+    x = "Month",
+    y = "Mean Shootings"
+  )
+```
+
+
+
+
+## Model
+
+I used geom_smooth to add regression lines to the plots of each mean. The regression lines are in blue and the shaded area represents the confidence interval with level .95.
+```{r genderbestfit}
+shooting_by_month_by_gender <- shooting_by_month |>
+  group_by(PERP_SEX, MONTH) |>
+  filter(PERP_SEX %in% c('M','F')) |>
+  summarize(COUNT = n())
+
+shooting_by_month_by_gender$mean <- shooting_by_month_by_gender$COUNT/16
+
+shooting_by_month_by_gender |> ggplot(
+  aes(x=MONTH, y = mean, group = PERP_SEX)) +
+  geom_line(aes(color = PERP_SEX)) +
+  geom_smooth() +
+  labs(
+    title = "Mean Shootings per Month by Male and Female Perpetrators",
+    subtitle = "NYPD Shooting Incident Data 2006-2022",
+    x = "Month",
+    y = "Mean Shootings",
+    color = "Perpetrator Gender"
+  )
+```
+
+```{r femalebestfit}
+shooting_by_month_by_gender |>
+  filter(PERP_SEX == 'F')|>
+  ggplot(
+    aes(x=MONTH, y = mean, group = 1)) +
+  geom_line() +
+  geom_smooth() +
+  labs(
+    title = "Mean Shootings per Month by Female Perpetrators from 2006-2022",
+    subtitle = "NYPD Shooting Incident Data Report",
+    x = "Month",
+    y = "Mean Shootings"
+  )
+```
+
+## Bias and Conclusions
+
+### Bias
+
+The most significant source of potential bias in the data for my analysis is the missing data. 11,383 observations or 41.7% of the dataset were missing data for the perpetrator's gender. I removed those observations from my analysis, so any conclusions are only valid for shootings in which the gender of the perpetrator is known.
+
+A second source of potential bias is the sample size difference between male and female perpetrators. Of the observations in which the perpetrator's gender is known, 15,439 (97.3%) were men and 424 (2.7%) were women.
+
+A source of personal bias could be confirmation bias. I chose to analyze the relationship between shooting frequency and month of the year because I have read previous reports about a relationship between gun violence and warm weather. This could lead me to be more likely to see that relationship. 
+
+### Conclusions
+
+There appears to be a relationship between the frequency of shootings and the month of the year. For the data across genders, the number of shootings steadily increases from February to July and decreases from July to February.
+
+When the data is grouped by gender, a similar patterns is observed. Both genders have a similar maximum point (June for women and July for men). One noteworthy difference between the data for male and female perpetrators is the relative maximum point for female perpetrators in March. This indicates that there may be differences in seasonal patterns of shootings between genders.  Identifying contributing factors to that peak would be an interesting question for further research.
